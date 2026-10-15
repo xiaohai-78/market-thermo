@@ -2,6 +2,8 @@
 
 A 股大盘与自选标的的恐惧/冰点看板，附美股 VIX 与 CNN 恐惧贪婪指数。只依赖 Python 3.7+ 标准库，前端使用 ECharts（CDN 加载）。
 
+接手开发先读 [AGENTS.md](AGENTS.md)（运行环境、规则、待办）和 [docs/DESIGN.md](docs/DESIGN.md)（设计取舍与踩坑记录）。
+
 ## 结构
 - `thermo/core.py`：数据获取与温度计算（命令行和看板共用）
 - `thermo/cli.py`：命令行版，`python3 -m thermo.cli 159530 国证机器人`
