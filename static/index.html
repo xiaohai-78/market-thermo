@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>市场温度</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='13' y='3' width='6' height='19' rx='3' fill='%2360a5fa'/><circle cx='16' cy='24' r='6' fill='%232563eb'/></svg>">
+<link rel="stylesheet" href="style.css">
+<script src="https://registry.npmmirror.com/echarts/5.5.1/files/dist/echarts.min.js"
+        onerror="var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js';document.head.appendChild(s)"></script>
+<script src="https://registry.npmmirror.com/html-to-image/1.11.11/files/dist/html-to-image.js" defer
+        onerror="var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js';document.head.appendChild(s)"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect x="13" y="3" width="6" height="19" rx="3"/><circle cx="16" cy="24" r="6"/></svg>
+    <div>
+      <h1>市场温度</h1>
+      <div class="sub" id="updated">加载中…</div>
+    </div>
+  </div>
+  <div class="actions">
+    <span class="pill" id="status">—</span>
+    <details class="shot-menu no-shot" id="shot-menu">
+      <summary class="btn" title="把当前页面保存为图片">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><span class="lbl">截图</span>
+      </summary>
+      <div class="shot-pop">
+        <button type="button" data-shot="data"><b>只截数据</b><span>大盘、评分、自选和详情，不含提醒设置与指标说明</span></button>
+        <button type="button" data-shot="full"><b>整页</b><span>页面上的全部内容</span></button>
+      </div>
+    </details>
+    <button class="btn no-shot" id="refresh" title="强制刷新（绕过缓存）">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5"/></svg><span class="lbl">刷新</span>
+    </button>
+  </div>
+</header>
+
+<main>
+  <section class="grid hero">
+    <article class="card" id="card-market">
+      <div class="card-head"><h2>A 股大盘</h2><span class="hint">沪深300 · 中证1000 · 中证全指</span></div>
+      <div class="gauge" id="gauge-market"></div>
+      <div class="hero-foot" id="market-foot"></div>
+    </article>
+
+    <article class="card" id="card-breadth">
+      <div class="card-head"><h2>市场宽度</h2><span class="hint" id="breadth-date"></span></div>
+      <div id="breadth-body" class="skeleton"></div>
+    </article>
+
+    <article class="card" id="card-global">
+      <div class="card-head"><h2>海外情绪</h2><span class="hint">美股，不计入 A 股温度</span></div>
+      <div id="global-body" class="skeleton"></div>
+    </article>
+  </section>
+
+  <section class="grid indices" id="indices"></section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>走势</h2>
+      <div class="tabs" id="trend-tabs">
+        <button data-tab="temp" class="on">大盘温度</button>
+        <button data-tab="breadth">宽度历史</button>
+        <button data-tab="cnn">CNN 恐惧贪婪</button>
+        <button data-tab="vix">VIX</button>
+      </div>
+    </div>
+    <div class="chart" id="trend-chart"></div>
+    <div class="note" id="trend-note"></div>
+  </section>
+
+  <section class="card" id="opp">
+    <div class="card-head">
+      <div>
+        <h2>信号评分</h2>
+        <div class="hint" id="opp-hint"></div>
+      </div>
+      <div class="opp-ctrl">
+        <div class="tabs" id="opp-tabs">
+          <button data-mode="buy" class="on">买入机会</button>
+          <button data-mode="sell">过热卖出</button>
+        </div>
+        <details class="weights" id="weights">
+          <summary>调整权重</summary>
+          <div class="w-grid" id="w-grid"></div>
+        </details>
+      </div>
+    </div>
+    <div class="opp" id="opp-body"><div class="empty">加载中…</div></div>
+    <div class="note" id="opp-note"></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>自选</h2>
+      <form class="add" id="add-form" autocomplete="off">
+        <input id="add-input" placeholder="代码或别名，如 159530、国证机器人、sh000300" aria-label="添加自选">
+        <button class="btn primary" type="submit">添加</button>
+      </form>
+    </div>
+    <div class="msg" id="add-msg" role="status"></div>
+    <div class="table-wrap">
+      <table class="wl" id="wl">
+        <thead><tr>
+          <th data-sort="name">名称</th>
+          <th data-sort="price" class="num">现价</th>
+          <th data-sort="pct" class="num">涨跌</th>
+          <th data-sort="temp" class="num">温度</th>
+          <th data-sort="dd" class="num">距一年高点</th>
+          <th data-sort="rsi" class="num hide-sm">RSI14</th>
+          <th data-sort="ret20" class="num hide-sm">20日</th>
+          <th data-sort="vr" class="num hide-sm">量比</th>
+          <th class="hide-sm">近60日温度</th>
+          <th></th>
+        </tr></thead>
+        <tbody id="wl-body"><tr><td colspan="10" class="empty">加载中…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card detail" id="detail" hidden>
+    <div class="card-head">
+      <div>
+        <h2 id="detail-title">—</h2>
+        <div class="hint" id="detail-sub"></div>
+      </div>
+      <div class="detail-ctrl">
+        <div class="tabs" id="range-tabs">
+          <button data-days="60">3月</button>
+          <button data-days="120">6月</button>
+          <button data-days="250" class="on">1年</button>
+          <button data-days="800">全部</button>
+        </div>
+        <label class="tiers">档位%
+          <input id="tiers-input" value="20,30,40,50" inputmode="decimal" aria-label="回撤档位">
+        </label>
+        <button class="btn ghost" id="detail-close" aria-label="关闭">✕</button>
+      </div>
+    </div>
+    <div class="stats" id="detail-stats"></div>
+    <div class="chart tall" id="detail-chart"></div>
+    <div class="note">虚线为按“近一年最高收盘价 × (1 − 档位)”计算的档位线，仅作对照，不构成买卖建议。</div>
+  </section>
+
+  <section class="card" id="alerts">
+    <div class="card-head">
+      <div>
+        <h2>邮件提醒</h2>
+        <div class="hint">只在状态变化时提醒，同一封邮件合并当次所有事件；按规则触发，不构成投资建议</div>
+      </div>
+      <div class="al-ctrl">
+        <span class="pill" id="al-status">—</span>
+        <label class="switch" title="提醒总开关"><input type="checkbox" id="al-enabled"><i></i></label>
+      </div>
+    </div>
+    <div class="al-grid">
+      <div>
+        <div class="al-sub">提醒事件</div>
+        <div class="al-events" id="al-events"></div>
+        <label class="al-cd">同一标的同类事件冷却
+          <input type="number" id="al-cooldown" min="0" max="60" step="1"> 天（B1 档位与 S3 每轮只报一次，不受冷却影响）</label>
+      </div>
+      <div>
+        <div class="al-sub">提醒的标的</div>
+        <div class="al-syms" id="al-syms"></div>
+        <div class="al-sub">操作</div>
+        <div class="al-actions">
+          <button class="btn" id="al-preview-btn" type="button">预演：现在会提醒什么</button>
+          <button class="btn" id="al-test" type="button">发送测试邮件</button>
+        </div>
+        <pre class="al-preview" id="al-preview" hidden></pre>
+      </div>
+    </div>
+    <div class="note" id="al-next"></div>
+    <div class="al-sub" style="margin-top:12px">提醒记录</div>
+    <div id="al-history" class="al-history"><div class="empty">加载中…</div></div>
+  </section>
+
+  <section class="card" id="glossary">
+    <div class="card-head"><h2>指标说明</h2></div>
+    <div class="glossary">
+      <div class="g-group">
+        <h3>温度</h3>
+        <dl>
+          <dt>温度 <span class="rng">0–100</span></dt>
+          <dd>下面 5 个单项指标各自在近 3 年历史中的分位数，取平均值。越低表示越冷、越恐慌。
+            <span class="zs"><span class="z z0">冰点 &lt;10</span><span class="z z1">恐惧 &lt;25</span><span class="z z2">中性 &lt;75</span><span class="z z3">贪婪 &lt;90</span><span class="z z4">过热 ≥90</span></span></dd>
+          <dt>分位 <span class="rng">0–100</span></dt>
+          <dd>当前值在过去 3 年里排在什么位置。分位 3 表示过去 3 年只有 3% 的时间比现在更低。不足 3 年历史的标的，分位参考性会下降。</dd>
+          <dt>大盘温度</dt>
+          <dd>沪深300（大盘股）、中证1000（小盘股）、中证全指（全 A 股）三个温度的平均值。</dd>
+          <dt>温度是相对的</dt>
+          <dd>温度只说明比自己的过去冷还是热，冰点不等于底部。熊市里冰点可能持续很久，牛市里过热也可能持续很久。</dd>
+        </dl>
+      </div>
+      <div class="g-group">
+        <h3>单项指标</h3>
+        <dl>
+          <dt>距一年高点</dt>
+          <dd>现价相对近 250 个交易日最高收盘价的跌幅。逢跌分档用的就是这个数字，详情页的虚线档位也按它来算。</dd>
+          <dt>RSI14 <span class="rng">0–100</span></dt>
+          <dd>相对强弱指数：近 14 天上涨力度占涨跌总力度的比例。低于 30 通常视为超卖，高于 70 视为超买。</dd>
+          <dt>MA60 乖离</dt>
+          <dd>现价偏离 60 日均线的幅度。负值越大，说明短期跌得离均线越远。</dd>
+          <dt>20 日涨跌</dt>
+          <dd>最近 20 个交易日（约一个月）的累计涨跌幅。</dd>
+          <dt>一年区间位置 <span class="rng">0–100%</span></dt>
+          <dd>现价处在近一年最低价和最高价之间的哪个位置。0% 是一年最低点，100% 是一年最高点。</dd>
+          <dt>量比</dt>
+          <dd>今日成交量 ÷ 前 20 日平均成交量。1 表示持平，明显大于 1 是放量。大跌时放量往往意味着恐慌性抛售。盘中数值会偏小。</dd>
+          <dt>连跌</dt>
+          <dd>连续收跌的交易日数。</dd>
+        </dl>
+      </div>
+      <div class="g-group">
+        <h3>市场宽度</h3>
+        <dl>
+          <dt>上涨占比 <span class="rng">0–100%</span></dt>
+          <dd>当天全 A 股中上涨股票的占比，反映普涨还是普跌。&lt;10% 或跌停 ≥100 家为极度恐慌，&lt;25% 为恐慌，&gt;75% 为普涨，&gt;90% 为狂热。</dd>
+          <dt>涨停 / 跌停</dt>
+          <dd>当天封住涨停 / 跌停的股票数。跌停家数激增是恐慌出清的典型信号。</dd>
+          <dt>涨超 5% / 跌超 5%</dt>
+          <dd>当天涨跌幅超过 5% 的股票数，比涨跌停更能反映整体的剧烈程度。</dd>
+          <dt>涨跌分布</dt>
+          <dd>柱状图按涨跌幅每 1% 分组统计股票数，红色为上涨，绿色为下跌，最两端分别是跌停和涨停。</dd>
+          <dt>宽度历史</dt>
+          <dd>宽度数据没有历史接口，由服务每 10 分钟采集一次，从部署那天开始积累。</dd>
+        </dl>
+      </div>
+      <div class="g-group">
+        <h3>信号评分 · 买入机会</h3>
+        <dl>
+          <dt>买入机会评分 <span class="rng">0–100</span></dt>
+          <dd>四个分项按权重加权（权重可在区块右上角调整，会自动归一化）。≥75 信号强，≥60 有信号，≥45 观察，其余无信号。它只是按规则排序，不是买入建议。</dd>
+          <dt>待企稳</dt>
+          <dd>总分 ≥60，但三项企稳条件一项都不满足（企稳分 &lt;34），说明便宜但还在跌。这时不标“有信号”或“信号强”，等出现至少一项企稳迹象再升级。</dd>
+          <dt><i class="sw c-cheap"></i>便宜度（默认 40%）</dt>
+          <dd>100 − 标的温度。衡量相对自身近 3 年历史够不够冷。</dd>
+          <dt><i class="sw c-tier"></i>回撤档位（默认 25%）</dt>
+          <dd>距一年高点的跌幅 ÷ 最深档位（取详情里的“档位%”，默认 50%），封顶 100。衡量按你的分档计划跌到了哪一步。</dd>
+          <dt><i class="sw c-stab"></i>企稳（默认 20%）</dt>
+          <dd>三项取平均：收盘站上 5 日均线记 100；RSI14 比近 5 日低点回升，每回升 1 点记 10 分，封顶 100；连跌天数每多一天扣 30 分。用来避免“接正在下落的刀”。</dd>
+          <dt><i class="sw c-env"></i>大盘环境（默认 15%）</dt>
+          <dd>100 − 大盘温度。大盘同样冰冷时，下跌更可能是系统性的，而不是标的自身出了问题。所有标的的这一项相同，只影响分数高低，不影响排名。</dd>
+          <dt>风险标记</dt>
+          <dd><b>个股</b>：价格信号看不出公司基本面恶化，需人工核对；<b>历史不足 3 年</b>：分位参考性下降；<b>仍在连跌</b>：连跌 3 天及以上；<b>跌穿最深档</b>：回撤超过最深档位，需按策略重新评估；证伪条件需要人工核对，评分无法判断。</dd>
+        </dl>
+      </div>
+      <div class="g-group">
+        <h3>信号评分 · 过热卖出</h3>
+        <dl>
+          <dt>过热卖出评分 <span class="rng">0–100</span></dt>
+          <dd>与买入评分对称，四项加权。≥75 止盈信号强，≥60 止盈信号，≥45 偏热，其余无信号。只看价格与情绪，不知道你的成本和仓位，不是卖出建议。</dd>
+          <dt>过热未见顶</dt>
+          <dd>总分 ≥60，但三项滞涨条件一项都不满足（滞涨分 &lt;34），说明很热但还在涨。这时不标止盈信号，避免卖得太早。</dd>
+          <dt><i class="sw c-hot"></i>过热度（默认 40%）</dt>
+          <dd>标的温度本身。</dd>
+          <dt><i class="sw c-rise"></i>涨幅偏离（默认 25%）</dt>
+          <dd>距一年最低收盘价的涨幅 ÷ 满分涨幅（默认 80%，可在权重面板调整），封顶 100。与买入侧的“回撤档位”对称。</dd>
+          <dt><i class="sw c-stall"></i>滞涨（默认 20%）</dt>
+          <dd>三项取平均：收盘跌破 5 日均线记 100；RSI14 比近 5 日高点回落，每回落 1 点记 10 分，封顶 100；连涨天数每多一天扣 30 分。与买入侧的“企稳”对称。</dd>
+          <dt><i class="sw c-env"></i>市场过热（默认 15%）</dt>
+          <dd>大盘温度。另外，宽度 ≥75%（普涨/狂热）、CNN ≥75（极度贪婪）、VIX &lt;15 会作为市场层面的提示显示在评分下方。</dd>
+          <dt>风险标记</dt>
+          <dd><b>连涨</b> 3 天及以上；<b>接近一年新高</b>：一年区间位置 ≥98%；<b>放量</b>：量比 ≥2；<b>历史不足 3 年</b>。</dd>
+          <dt>没有覆盖的部分</dt>
+          <dd>卖出方法里按成本的分批止盈（盈利 50% / 100%）和仓位再平衡需要成本与仓位，看板不存这些数据，需自行对照。证伪离场同样需要人工判断。</dd>
+        </dl>
+      </div>
+      <div class="g-group">
+        <h3>海外情绪（美股，不计入 A 股温度）</h3>
+        <dl>
+          <dt>VIX 波动率</dt>
+          <dd>由标普 500 期权价格推算出的未来 30 天年化波动率预期，俗称“恐慌指数”。<b>越高越恐慌</b>，方向和温度相反。&lt;15 平静，15–20 正常，20–30 紧张，30–40 恐慌，≥40 极度恐慌。历史收盘最高 82.69（2020 年 3 月）。</dd>
+          <dt>CNN 恐惧贪婪 <span class="rng">0–100</span></dt>
+          <dd>CNN 用 7 项美股指标合成的情绪分，越低越恐惧。&lt;25 极度恐惧，&lt;45 恐惧，&lt;55 中性，&lt;75 贪婪，≥75 极度贪婪。7 个分项同样是 0–100：</dd>
+          <dd class="sub-list">
+            <b>标普动量</b> 标普 500 相对 125 日均线的位置；
+            <b>股价强度</b> 纽交所创 52 周新高与新低的股票数之比；
+            <b>股价宽度</b> 上涨股与下跌股的成交量对比；
+            <b>看跌看涨比</b> 看跌期权与看涨期权的成交比，买看跌的人越多越恐惧；
+            <b>波动率</b> VIX 相对其 50 日均值的高低；
+            <b>垃圾债需求</b> 垃圾债与投资级债的收益率差，利差越小说明越敢冒险；
+            <b>避险需求</b> 近 20 天股票相对国债的收益差，资金涌向国债说明避险情绪强。
+          </dd>
+          <dt>怎么对照看</dt>
+          <dd>A 股和海外同时恐慌，多为全球性风险；只有 A 股恐慌，多为本土因素。</dd>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <p>数据：腾讯 / 东方财富 / 新浪 / CBOE / CNN。仅供参考，不构成投资建议。</p>
+  </footer>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
