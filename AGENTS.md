@@ -10,7 +10,7 @@ A 股市场温度看板：大盘与自选标的的恐惧/冰点判断、买入�
 ## 常用命令
 - 本地运行：`python3 server.py`（http://localhost:8600 ，数据写 `./data/`；未设 `THERMO_NOTIFY_URL`，不会发邮件）
 - 命令行：`python3 -m thermo.cli 159530 国证机器人`
-- 部署：`./deploy/deploy.sh`（打包代码 → 替换服务器 `/mnt/data/market-thermo/app` → 重建容器，数据目录不动）
+- 部署：`./deploy/deploy.sh`（打包代码 → 替换服务器 `/mnt/data/market-thermo/app` → 重建容器，数据目录不动）。默认值就是作者的服务器；部署到别的环境用 `THERMO_BASE`、`THERMO_IMAGE`、`THERMO_PORT`、`THERMO_DNS`、`THERMO_NOTIFY_URL`、`THERMO_PUBLIC_URL` 覆盖，见 README
 - 部署后验证：`curl http://192.168.28.66:8600/api/health`，`alert_loop_age` 应 <60 秒，`threads` 含 `alert_loop`、`warmer`
 - 提醒预演（不发送、不改状态）：`curl -X POST 'http://192.168.28.66:8600/api/alerts/preview?phase=close&fresh=1'`
 

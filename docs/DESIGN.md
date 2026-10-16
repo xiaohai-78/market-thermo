@@ -95,6 +95,8 @@
 - 代码以只读方式挂载（`/mnt/data/market-thermo/app` → `/app`），数据以读写方式挂载（`/mnt/data/market-thermo/data` → `/data`）。容器以 nobody（65534）运行，配置 `--restart unless-stopped`，dockerd 开机自启。
 - 容器参数：`TZ=CST-8`（alpine 没有 tzdata；代码里统一用固定的 +8 时区 `core.CN_TZ`）、`--dns` 指向路由器加 223.5.5.5、日志轮转 5MB×2、`THERMO_NOTIFY_URL`、`THERMO_PUBLIC_URL`。
 - SSH 公钥在 `/etc/dropbear/authorized_keys`。
+- 脚本参数都可以用环境变量覆盖，默认值对应作者的服务器。用 `${VAR-默认}`（不带冒号）实现“设为空字符串即关闭”：`THERMO_DNS=` 表示用 Docker 默认 DNS，`THERMO_NOTIFY_URL=` 表示不发邮件。默认 DNS 用的是服务器自己的 IP，只适用于本身就是路由器的机器；部署到普通服务器时必须覆盖。
+- VIX 历史预下载失败不会中断部署：先写到临时文件，非空时才替换。
 
 ## 9. 持久化数据
 
