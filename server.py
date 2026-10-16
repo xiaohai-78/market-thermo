@@ -345,6 +345,11 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             if method == "GET" and u.path == "/api/overview":
                 return self.send_json(overview(force))
+            if method == "GET" and u.path == "/api/search":
+                q = q.get("q", "").strip()[:20]
+                if not q:
+                    return self.send_json([])
+                return self.send_json(cache.get("search:" + q, lambda: core.search(q), ttl=3600))
             if method == "GET" and u.path == "/api/settings":
                 return self.send_json(get_settings())
             if method == "PUT" and u.path == "/api/settings":

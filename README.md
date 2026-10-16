@@ -40,6 +40,7 @@ python3 server.py            # http://localhost:8600
 | POST | `/api/watchlist` | `{"code": "159530"}` 添加自选 |
 | DELETE | `/api/watchlist?code=sz159530` | 移除自选 |
 | GET | `/api/symbol?code=159530&days=500` | 单个标的的完整序列 |
+| GET | `/api/search?q=芯片` | 模糊搜索（名称 / 拼音首字母 / 代码片段），最多 10 条 |
 | GET | `/api/health` | 缓存年龄与刷新状态 |
 | GET / PUT | `/api/settings` | 档位、权重、提醒设置（PUT 为部分合并） |
 | GET | `/api/alerts` | 提醒记录、状态与下次检查时间 |

@@ -97,7 +97,11 @@
     <div class="card-head">
       <h2>自选</h2>
       <form class="add" id="add-form" autocomplete="off">
-        <input id="add-input" placeholder="代码或别名，如 159530、国证机器人、sh000300" aria-label="添加自选">
+        <div class="combo">
+          <input id="add-input" placeholder="搜索名称、拼音首字母或代码，如 芯片、gzmt、5125" aria-label="添加自选"
+                 role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="add-suggest">
+          <ul class="suggest" id="add-suggest" role="listbox" hidden></ul>
+        </div>
         <button class="btn primary" type="submit">添加</button>
       </form>
     </div>

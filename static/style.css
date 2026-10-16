@@ -195,6 +195,20 @@ h2 { margin: 0; font-size: 15px; font-weight: 600; }
 
 /* 自选 */
 .add { display: flex; gap: 8px; flex: 1; max-width: 460px; }
+.combo { position: relative; flex: 1; min-width: 0; display: flex; }
+.suggest {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 15; margin: 0; padding: 4px; list-style: none;
+  max-height: 340px; overflow-y: auto; background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .18);
+}
+.suggest li { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.suggest li.on { background: var(--card-2); outline: 1px solid var(--border); }
+.suggest li b { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.suggest li b mark { background: none; color: var(--accent); }
+.suggest li .c { color: var(--faint); font-variant-numeric: tabular-nums; }
+.suggest li .in { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.suggest li.have b { color: var(--muted); }
+.suggest li.none { cursor: default; color: var(--muted); }
 .add input { flex: 1; min-width: 0; padding: 6px 10px; border-radius: 9px; border: 1px solid var(--border); background: var(--card-2); outline: none; }
 .add input:focus { border-color: var(--accent); }
 .msg { font-size: 12px; min-height: 0; color: var(--muted); }

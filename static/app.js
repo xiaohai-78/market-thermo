@@ -321,6 +321,66 @@ async function addSymbol(code) {
   } catch (e) { msg.className = "msg bad"; msg.textContent = "添加失败：" + e.message; }
 }
 
+// ---------- 自选搜索（后端 /api/search 转腾讯 smartbox） ----------
+const sug = { items: [], active: -1, timer: null, seq: 0, q: "" };
+
+function closeSuggest() {
+  $("#add-suggest").hidden = true;
+  $("#add-input").setAttribute("aria-expanded", "false");
+  $("#add-input").removeAttribute("aria-activedescendant");
+  sug.active = -1;
+}
+
+function highlight(name, q) {
+  const i = name.toLowerCase().indexOf(q.toLowerCase());
+  if (!q || i < 0) return esc(name);  // 拼音首字母匹配时无法定位，直接显示
+  return esc(name.slice(0, i)) + "<mark>" + esc(name.slice(i, i + q.length)) + "</mark>" + esc(name.slice(i + q.length));
+}
+
+function renderSuggest() {
+  const box = $("#add-suggest"), input = $("#add-input");
+  const have = new Set(state.wl.map((r) => r.sym));
+  box.innerHTML = sug.items.length ? sug.items.map((it, i) => `
+    <li role="option" id="sug-${i}" data-i="${i}" aria-selected="${i === sug.active}" class="${i === sug.active ? "on" : ""} ${have.has(it.sym) ? "have" : ""}">
+      <b>${highlight(it.name, sug.q)}</b><span class="c">${it.code}</span><span class="tag soft">${it.type}</span>${have.has(it.sym) ? `<span class="in">已在自选</span>` : ""}
+    </li>`).join("")
+    : `<li class="none">没有找到“${esc(sug.q)}”。也可以直接输入 6 位代码后点添加</li>`;
+  box.hidden = false;
+  input.setAttribute("aria-expanded", "true");
+  if (sug.active >= 0) input.setAttribute("aria-activedescendant", "sug-" + sug.active);
+  else input.removeAttribute("aria-activedescendant");
+  const on = box.querySelector("li.on");
+  if (on) on.scrollIntoView({ block: "nearest" });
+}
+
+async function searchSuggest(q) {
+  const my = ++sug.seq;
+  try {
+    const items = await api("/api/search?q=" + encodeURIComponent(q));
+    if (my !== sug.seq) return;  // 只渲染最后一次输入的结果
+    sug.items = items;
+    sug.q = q;
+    sug.active = items.length ? 0 : -1;
+    renderSuggest();
+  } catch (e) {
+    if (my === sug.seq) closeSuggest();
+  }
+}
+
+function pickSuggest(i) {
+  const it = sug.items[i];
+  if (!it) return;
+  closeSuggest();
+  $("#add-input").value = "";
+  if (state.wl.some((r) => r.sym === it.sym)) {
+    $("#add-msg").className = "msg";
+    $("#add-msg").textContent = `${it.name} 已在自选中`;
+    openDetail(it.sym);
+  } else {
+    addSymbol(it.sym);
+  }
+}
+
 async function removeSymbol(sym) {
   await api("/api/watchlist?code=" + encodeURIComponent(sym), { method: "DELETE" });
   const msg = $("#add-msg");
@@ -719,7 +779,40 @@ function bind() {
     if (row) openDetail(row.dataset.sym);
   });
   $("#detail-close").addEventListener("click", closeDetail);
-  $("#add-form").addEventListener("submit", (e) => { e.preventDefault(); const v = $("#add-input").value.trim(); if (v) addSymbol(v); });
+  $("#add-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (!$("#add-suggest").hidden && sug.active >= 0) return pickSuggest(sug.active);
+    const v = $("#add-input").value.trim();
+    closeSuggest();
+    if (v) addSymbol(v);
+  });
+  $("#add-input").addEventListener("input", (e) => {
+    const q = e.target.value.trim();
+    clearTimeout(sug.timer);
+    if (!q) { sug.seq++; closeSuggest(); return; }
+    sug.timer = setTimeout(() => searchSuggest(q), 200);
+  });
+  $("#add-input").addEventListener("keydown", (e) => {
+    const open = !$("#add-suggest").hidden && sug.items.length;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      if (!open) return;
+      e.preventDefault();
+      const n = sug.items.length;
+      sug.active = (sug.active + (e.key === "ArrowDown" ? 1 : -1) + n) % n;
+      renderSuggest();
+    } else if (e.key === "Escape") {
+      closeSuggest();
+    }
+  });
+  $("#add-input").addEventListener("blur", () => setTimeout(closeSuggest, 150));
+  $("#add-input").addEventListener("focus", (e) => {  // 切走再切回来时恢复候选列表
+    if (e.target.value.trim() && e.target.value.trim() === sug.q) setTimeout(renderSuggest, 160);
+  });
+  // 用 mousedown：click 触发前输入框已经失焦，列表会先被关掉
+  $("#add-suggest").addEventListener("mousedown", (e) => {
+    const li = e.target.closest("li[data-i]");
+    if (li) { e.preventDefault(); pickSuggest(+li.dataset.i); }
+  });
   $("#wl-body").addEventListener("click", (e) => {
     const rm = e.target.closest("[data-rm]");
     if (rm) { e.stopPropagation(); removeSymbol(rm.dataset.rm); return; }

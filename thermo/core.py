@@ -12,6 +12,7 @@ import json
 import os
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
@@ -64,6 +65,39 @@ def kind(sym):
     if c.startswith(("5", "15", "16", "18")):
         return "基金"
     return "个股"
+
+
+SEARCH_TYPES = {"GP-A": "股票", "GP-A-KCB": "科创板", "GP-A-CYB": "创业板", "ETF": "ETF", "LOF": "LOF",
+                "QDII-ETF": "跨境ETF", "QDII-LOF": "跨境LOF", "ZS": "指数"}
+
+
+def search(q, limit=10):
+    """模糊搜索 A 股、场内基金、指数：中文名、拼音首字母、代码片段都可以。别名优先。
+
+    数据源为腾讯 smartbox，每次最多 10 条，混有场外基金(jj)/港美股，这里过滤掉。
+    """
+    q = q.strip()
+    out, seen = [], set()
+    for alias, sym in ALIASES.items():
+        if q and (q in alias or alias in q):
+            out.append({"sym": sym, "code": sym[2:], "name": alias, "type": "指数"})
+            seen.add(sym)
+    raw = get("https://smartbox.gtimg.cn/s3/?v=2&t=all&q=" + urllib.parse.quote(q), referer="https://gu.qq.com/")
+    body = raw.split('"', 1)[1].rsplit('"', 1)[0] if raw.count('"') >= 2 else ""
+    for item in body.split("^"):
+        f = item.split("~")
+        if len(f) < 5 or f[0] not in ("sh", "sz", "bj") or f[4] not in SEARCH_TYPES:
+            continue
+        sym = f[0] + f[1]
+        if sym in seen:
+            continue
+        seen.add(sym)
+        try:
+            name = json.loads('"%s"' % f[2])  # 名称是 \uXXXX 转义
+        except ValueError:
+            name = f[2]
+        out.append({"sym": sym, "code": f[1], "name": name, "type": SEARCH_TYPES[f[4]]})
+    return out[:limit]
 
 
 def resolve(code):

@@ -26,6 +26,7 @@
 | VIX 历史 | CBOE `VIX_History.csv` | 约 0.5MB，从服务器下载极慢、常超时：落盘 `vix_history.json`，6 小时内直接读文件，下载失败也用文件；服务器上没有该文件时，部署脚本从 Mac 下载后上传 |
 | VIX 实时 | 新浪 `hq.sinajs.cn/list=znb_VIX` | 必须带新浪 Referer；GBK 编码，只取数值字段 |
 | CNN 恐惧贪婪 | `production.dataviz.cnn.io/index/fearandgreed/graphdata` | 必须带 `Accept` 请求头，否则返回 418。含 7 个分项和约 1 年历史 |
+| 搜索 | 腾讯 `smartbox.gtimg.cn/s3/?v=2&t=all&q=` | 支持中文名、拼音首字母、代码片段。返回 `v_hint="市场~代码~名称(\uXXXX 转义)~拼音~类型^..."`，最多 10 条，混有场外基金（`jj`）、港股和美股；`core.search` 只保留 sh/sz/bj 市场里的 `GP-A*`、`ETF`、`LOF`、`QDII-*`、`ZS`，别名优先。服务端按查询词缓存 1 小时 |
 
 - 中国波指 iVIX 2018 年起停发，A 股没有 VIX 对应物，所以海外情绪单独展示，不计入 A 股温度。
 - 网络：`core.get()` 遇到连接错误或 DNS 失败会重试 2 次，HTTP 错误不重试。容器 DNS 用路由器 dnsmasq，阿里 DNS 兜底（Docker 默认的 8.8.8.8 在国内慢）。路由器上游含 8.8.8.8，会偶发 `EAI_AGAIN`。
@@ -84,6 +85,7 @@
 
 - 单文件 `app.js`，状态在 `state` 和 `scoreState` 里。浏览器 localStorage 只存界面偏好（`opp_mode` 买卖标签、`tab` 走势标签）。
 - 深度链接 `#sym=sh562500` 可以直接打开详情，邮件里的链接用的就是它。
+- 添加自选的搜索框是 ARIA combobox：输入停顿 200ms 后发起搜索，`sug.seq` 保证只渲染最后一次输入的结果；默认选中第一条，回车添加；已在自选中的选项标注出来，选中后只打开详情。列表项用 `mousedown` 选中，因为 click 触发前输入框已经失焦、列表会先被关掉；失焦后 150ms 关闭，重新聚焦且内容没变时恢复列表。
 - 截图使用 html-to-image：给 body 加 `shooting` 类，隐藏按钮和 `.no-shot` 元素，并把顶栏改为静态；“只截数据”模式再加 `shooting-data` 类，隐藏 `#alerts` 和 `#glossary`。图片像素控制在约 1600 万以内（Safari 画布上限），超出时自动降低分辨率。**等待布局刷新用 `setTimeout`，不用 `requestAnimationFrame`**，因为页面不在前台时它不会触发。
 - 验证时的坑：浏览器面板隐藏时视口宽度可能是 0，截图会全黑，ECharts 动画也不会播放，导致折线缺失。这时改用 `resize_window` 模拟视口，加 `javascript_tool` 读取 DOM 来验证；需要看截图效果时，先关掉图表动画。
 
