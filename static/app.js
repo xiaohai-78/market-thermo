@@ -105,6 +105,7 @@ function renderOverview() {
 
   renderBreadth();
   renderGlobal();
+  renderFiscal();
   renderIndices();
   renderTrend();
 }
@@ -163,6 +164,48 @@ function renderGlobal() {
   } else cnnHtml = `<div class="err">CNN 获取失败：${esc(c.error)}</div>`;
   box.innerHTML = `<div class="global"><div>${vixHtml}</div><div>${cnnHtml}</div></div>`;
   if (v.ok) spark("vix-spark", $("#vix-spark"), v.data.series.close.slice(-250), css(ZONES[vixZone(v.data.value)][2]));
+}
+
+function renderFiscal() {
+  const box = $("#fiscal-body");
+  box.classList.remove("skeleton");
+  const f = state.ov.fiscal;
+  disposeWhere((k) => k.startsWith("fis-"));
+  const pending = (name, r) => (r.ok
+    ? `<div class="g-title">${name}</div><div class="hint">加载中，稍后自动刷新…</div>`
+    : `<div class="err">${name}获取失败：${esc(r.error)}</div>`);
+  const sg = (v, d = 1) => (v > 0 ? "+" : "") + v.toFixed(d);
+
+  const d = f.debt.data;
+  const debtHtml = d ? `
+      <div class="g-title">国债总额</div>
+      <div class="row"><span class="big">${d.value.toFixed(2)}</span><span class="hint">万亿美元</span></div>
+      <div class="hint">${d.change == null ? "" : `较一年前 ${sg(d.change, 2)} 万亿（${sg(d.change_pct)}%） · `}${esc(d.date)}</div>
+      <div class="mini" id="fis-debt"></div>` : pending("国债总额", f.debt);
+
+  const b = f.budget.data;
+  const budgetHtml = b ? `
+      <div class="g-title">利息负担 · ${esc(b.period)}</div>
+      <div class="row"><span class="big">${b.interest_vs_receipts.toFixed(1)}%</span><span class="hint">财政收入拿去付净利息</span></div>
+      <div class="parts wide">
+        <div class="p"><span>净利息</span><em><i style="width:${b.interest >= b.defense ? 100 : b.interest / b.defense * 100}%;background:${css("--t3")}"></i></em><b>${b.interest.toFixed(2)} 万亿</b></div>
+        <div class="p"><span>国防</span><em><i style="width:${b.defense >= b.interest ? 100 : b.defense / b.interest * 100}%;background:${css("--t2")}"></i></em><b>${b.defense.toFixed(2)} 万亿</b></div>
+      </div>
+      <div class="hint">利息${b.interest_vs_defense >= 0 ? "比国防多" : "比国防少"} ${Math.abs(b.interest_vs_defense).toFixed(0)}% · 利息同比 ${b.interest_yoy == null ? "--" : sg(b.interest_yoy) + "%"} · 占总支出 ${b.interest_vs_outlays.toFixed(0)}%</div>
+      <div class="hint">财政收入 ${b.receipts.toFixed(2)} 万亿，支出 ${b.outlays.toFixed(2)} 万亿，赤字 ${b.deficit.toFixed(2)} 万亿 · 截至 ${esc(b.date)}</div>` : pending("利息负担", f.budget);
+
+  const y = f.yield.data;
+  const yieldHtml = y ? `
+      <div class="g-title">10 年期美债收益率</div>
+      <div class="row"><span class="big">${y.value.toFixed(2)}%</span><span class="${ud(y.change_bp)}">${sg(y.change_bp, 0)} bp</span></div>
+      <div class="hint">近 3 年分位 ${n0(y.pctile)} · ${esc(y.date)}</div>
+      <div class="mini" id="fis-yield"></div>` : pending("10 年期美债收益率", f.yield);
+
+  box.innerHTML = `
+    <div class="fiscal"><div>${debtHtml}</div><div>${budgetHtml}</div><div>${yieldHtml}</div></div>
+    ${f.plain ? `<p class="plain"><b>大白话</b>${esc(f.plain)}</p>` : ""}`;
+  if (d) spark("fis-debt", $("#fis-debt"), d.series.close, css("--t2"));
+  if (y) spark("fis-yield", $("#fis-yield"), y.series.close, css("--t3"));
 }
 
 function renderIndices() {
@@ -445,7 +488,8 @@ const MODES = {
     },
   },
 };
-const scoreState = { mode: MODES[store("opp_mode")] ? store("opp_mode") : "buy" };
+const OPP_TOP = 5;   // 信号评分默认只显示前几名，其余点“展开全部”
+const scoreState = { mode: MODES[store("opp_mode")] ? store("opp_mode") : "buy", all: store("opp_all") === "1" };
 
 function normWeights(mode) {
   const m = MODES[mode], raw = state.settings.weights[mode], w = {};
@@ -475,7 +519,8 @@ function renderOpportunity() {
     .sort((a, b) => b.sg.score - a.sg.score);
   body.dataset.mode = mode;
   if (!rows.length) { body.innerHTML = `<div class="empty">自选为空或数据不足</div>`; return; }
-  body.innerHTML = rows.map(({ d, sg }, i) => {
+  const list = scoreState.all ? rows : rows.slice(0, OPP_TOP);
+  body.innerHTML = list.map(({ d, sg }, i) => {
     const segs = m.keys.map((k) => `<i style="width:${sg.parts[k] * w[k]}%;background:${css(m.colors[k])}" title="${m.full[k]} ${Math.round(sg.parts[k])} × ${Math.round(w[k] * 100)}%"></i>`).join("");
     return `<div class="opp-row" data-sym="${d.sym}" title="查看详情">
       <div class="rank">${i + 1}</div>
@@ -485,7 +530,8 @@ function renderOpportunity() {
       <div class="opp-parts">${m.keys.map((k) => `<span><i class="sw" style="background:${css(m.colors[k])}"></i>${m.names[k]} ${Math.round(sg.parts[k])}</span>`).join("")}` +
       `${sg.flags.map(([t, warn]) => `<span class="flag ${warn ? "warn" : ""}">${esc(t)}</span>`).join("")}</div>
     </div>`;
-  }).join("");
+  }).join("") + (rows.length > OPP_TOP
+    ? `<button type="button" class="btn ghost opp-more" data-more>${scoreState.all ? `收起，只看前 ${OPP_TOP} 名` : `展开全部 ${rows.length} 个 ▾`}</button>` : "");
   const wp = {};
   m.keys.forEach((k) => { wp[k] = Math.round(w[k] * 100) + "%"; });
   $("#opp-note").textContent = m.note(wp, state.settings);
@@ -521,6 +567,7 @@ function renderAlerts() {
   const syms = state.wl.filter((r) => r.ok && !r.data.error);
   $("#al-syms").innerHTML = syms.map((r) => `<label class="al-sym"><input type="checkbox" data-sym="${r.sym}" ${cfg.muted.includes(r.sym) ? "" : "checked"}>${esc(r.data.name)}</label>`).join("") || `<span class="hint">自选为空</span>`;
   $("#al-next").textContent = "检查时间：盘中每 10 分钟（9:40–11:30、13:00–14:55，仅价格类事件）· " + a.next_runs.join(" · ");
+  $("#al-sum").textContent = a.history.length ? `最近一封 ${a.history[0].time.slice(5, 16)} · ${a.history[0].title || ""}` : "还没有发出过提醒";
   $("#al-history").innerHTML = a.history.length ? a.history.map((h, i) => `<details class="al-h">
       <summary><span class="t">${h.time.slice(5, 16)}</span><span class="tag soft">${PHASE[h.phase] || h.phase}</span>
         <span class="ti">${esc(h.title || "")}</span>${h.delivered ? `<span class="ok">已发送</span>` : `<span class="bad" title="${esc(h.error || "")}">未发送</span>`}</summary>
@@ -650,9 +697,14 @@ async function screenshot(mode) {
   toast("正在生成图片…", 60000);
   document.body.classList.add("shooting");
   if (mode === "data") document.body.classList.add("shooting-data");
-  // 等隐藏生效、布局刷新（不用 requestAnimationFrame：页面不在前台时它不触发）
-  await new Promise((r) => setTimeout(r, 80));
+  const folds = [...document.querySelectorAll("details.fold")].map((d) => [d, d.open]);
+  const wasAll = scoreState.all;
   try {
+    folds.forEach(([d]) => { d.open = true; });
+    scoreState.all = true;
+    renderOpportunity();
+    // 等隐藏生效、布局刷新（不用 requestAnimationFrame：页面不在前台时它不触发）
+    await new Promise((r) => setTimeout(r, 80));
     const node = document.body, w = node.scrollWidth, h = node.scrollHeight;
     // Safari 画布上限约 1678 万像素：长页面自动降低分辨率
     const ratio = Math.max(0.5, Math.min(2, window.devicePixelRatio || 1, Math.sqrt(16e6 / (w * h))));
@@ -672,7 +724,10 @@ async function screenshot(mode) {
     toast("截图失败：" + ((e && e.message) || e), 5000);
   } finally {
     document.body.classList.remove("shooting", "shooting-data");
+    folds.forEach(([d, o]) => { d.open = o; });
+    scoreState.all = wasAll;
     menu.classList.remove("busy");
+    renderOpportunity();
   }
 }
 
@@ -775,6 +830,11 @@ function bind() {
   });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("#shot-menu").open = false; });
   $("#opp-body").addEventListener("click", (e) => {
+    if (e.target.closest("[data-more]")) {
+      scoreState.all = !scoreState.all;
+      store("opp_all", scoreState.all ? "1" : "0");
+      return renderOpportunity();
+    }
     const row = e.target.closest(".opp-row[data-sym]");
     if (row) openDetail(row.dataset.sym);
   });
@@ -835,6 +895,11 @@ function bind() {
     renderDetail();
     renderWeights();
     renderOpportunity();
+  });
+
+  document.querySelectorAll("details.fold").forEach((d) => {
+    if (store("fold_" + d.id) === "1") d.open = true;
+    d.addEventListener("toggle", () => store("fold_" + d.id, d.open ? "1" : "0"));
   });
 
   const savedTab = store("tab");

@@ -177,12 +177,22 @@ def get_vix(force=False):
     return v
 
 
+# 美国财政数据更新慢（国债日更、预算月报、收益率日更），缓存时间长；block=False：未就绪时不拖慢总览，后台加载
+FISCAL_TTL = {"debt": 6 * 3600, "budget": 12 * 3600, "yield": 2 * 3600}
+FISCAL_FN = {"debt": core.fiscal_debt, "budget": core.fiscal_budget, "yield": core.fiscal_yield}
+
+
+def get_fiscal(part):
+    return cache.get("fiscal_" + part, FISCAL_FN[part], ttl=FISCAL_TTL[part], block=False)
+
+
 def overview(force=False):
     futs = {
         "indices": [pool.submit(_safe, symbol, s, force) for s, _ in core.MARKET_INDICES],
         "breadth": pool.submit(_safe, get_breadth, force),
         "vix": pool.submit(_safe, get_vix, force),
         "cnn": pool.submit(_safe, lambda: cache.get("cnn", core.cnn, force)),
+        "fiscal": {k: pool.submit(_safe, get_fiscal, k) for k in FISCAL_FN},
     }
     indices = []
     for f in futs["indices"]:
@@ -190,6 +200,8 @@ def overview(force=False):
         indices.append(dict(r, data=strip_series(r["data"], 250)) if r["ok"] else r)
     temps = [r["data"]["temp"] for r in indices if r["ok"] and r["data"].get("temp") is not None]
     avg = sum(temps) / len(temps) if temps else None
+    fiscal = {k: f.result() for k, f in futs["fiscal"].items()}
+    fiscal["plain"] = core.fiscal_plain(*[fiscal[k]["data"] if fiscal[k]["ok"] else None for k in ("debt", "budget", "yield")])
     return {
         "time": core.now_cn().strftime("%Y-%m-%d %H:%M:%S"),
         "trading": core.is_trading_time(),
@@ -199,6 +211,7 @@ def overview(force=False):
         "breadth_history": core.read_breadth(BREADTH_CSV)[-120:],
         "vix": futs["vix"].result(),
         "cnn": futs["cnn"].result(),
+        "fiscal": fiscal,
     }
 
 

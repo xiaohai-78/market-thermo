@@ -26,6 +26,9 @@
 | VIX 历史 | CBOE `VIX_History.csv` | 约 0.5MB，从服务器下载极慢、常超时：落盘 `vix_history.json`，6 小时内直接读文件，下载失败也用文件；服务器上没有该文件时，部署脚本从 Mac 下载后上传 |
 | VIX 实时 | 新浪 `hq.sinajs.cn/list=znb_VIX` | 必须带新浪 Referer；GBK 编码，只取数值字段 |
 | CNN 恐惧贪婪 | `production.dataviz.cnn.io/index/fearandgreed/graphdata` | 必须带 `Accept` 请求头，否则返回 418。含 7 个分项和约 1 年历史 |
+| 美国国债总额 | 财政部 FiscalData `v2/accounting/od/debt_to_penny`，取最近 400 个工作日 | 按日更新，滞后约 1 个工作日；一年前的值取不晚于“最新日期 − 365 天”的最后一条 |
+| 美国财政收支 | 财政部 FiscalData `v1/accounting/mts/mts_table_9`（月度财政报告），取最近 40 行再筛出最新日期 | 每个日期 33 行，**收入合计和支出合计都叫 `Total`**，靠 `parent_id` 对应的分组名区分；金额是财年累计（美国财年 10 月起，9 月底即全年），含上年同期。表结构变了会抛 `ValueError`，不静默出错 |
+| 10 年期美债收益率 | FRED `fredgraph.csv?id=DGS10`（近 3 年） | 滞后约 1 个交易日，假日为空值。**必须用 urllib 默认 UA**：浏览器 UA 和自定义 UA 都会被挂起到超时；财政部自家的 `home.treasury.gov` 收益率 CSV 从国内要 17 秒，所以不用 |
 | 搜索 | 腾讯 `smartbox.gtimg.cn/s3/?v=2&t=all&q=` | 支持中文名、拼音首字母、代码片段。返回 `v_hint="市场~代码~名称(\uXXXX 转义)~拼音~类型^..."`，最多 10 条，混有场外基金（`jj`）、港股和美股；`core.search` 只保留 sh/sz/bj 市场里的 `GP-A*`、`ETF`、`LOF`、`QDII-*`、`ZS`，别名优先。服务端按查询词缓存 1 小时 |
 
 - 中国波指 iVIX 2018 年起停发，A 股没有 VIX 对应物，所以海外情绪单独展示，不计入 A 股温度。
@@ -55,6 +58,7 @@
 ## 5. 缓存与后台线程（server.py）
 
 - TTL：盘中 60 秒，其他时间 15 分钟。过期时先返回旧值，同时在后台刷新；后台刷新超过 300 秒视为卡住，允许重新发起。`force=True`（`?refresh=1`）时同步拉取，失败则返回旧值。
+- 美国财政三项（`fiscal_debt`/`fiscal_budget`/`fiscal_yield`）更新慢，TTL 分别 6 小时、12 小时、2 小时，且 `block=False`：没有缓存时总览直接返回 None，后台加载，不拖慢首页；刷新按钮不强制刷新它们。取不到时前端只让对应那一列显示“加载中/获取失败”。“大白话”那句由 `core.fiscal_plain` 按已有的数据拼出，缺哪项略过哪项。
 - VIX 历史使用 `block=False`：没有缓存时直接返回 None 并在后台加载，此时 VIX 先只给实时值。
 - warmer：盘中每 30 秒、其他时间每 5 分钟预热一次；有失败项时 30 秒后重试。市场宽度在获取时顺带写入 `breadth_history.csv`（同一天覆盖写）。
 - `/api/health`：各缓存的数据年龄、后台刷新状态、线程列表、`alert_loop_age`。
@@ -83,10 +87,12 @@
 
 ## 7. 前端（static/）
 
-- 单文件 `app.js`，状态在 `state` 和 `scoreState` 里。浏览器 localStorage 只存界面偏好（`opp_mode` 买卖标签、`tab` 走势标签）。
+- 单文件 `app.js`，状态在 `state` 和 `scoreState` 里。浏览器 localStorage 只存界面偏好：`opp_mode`（买卖标签）、`tab`（走势标签）、`opp_all`（信号评分是否展开全部）、`fold_fold-alerts` 和 `fold_fold-gloss`（两个折叠区的开合，键名是 `fold_` 加折叠区的 id）。
+- 区块顺序按使用频率和决策顺序排：大盘 / 宽度 / 海外情绪、三个指数卡、信号评分、自选与详情（`#detail` 必须紧跟自选表，点行时在表下方展开）、走势、美国财政、邮件提醒、指标说明。低频内容默认折叠。取舍和审查数据见 [LAYOUT-REDESIGN.md](LAYOUT-REDESIGN.md)。
+- 折叠区是 `details.fold`：邮件提醒只折叠设置和记录，卡头的状态与总开关常显；指标说明整块折叠。信号评分默认只显示前 `OPP_TOP`（5）名，列表末尾的 `[data-more]` 按钮展开全部。`.al-history`、`.al-events`、`.opp` 这几个 grid 必须写 `grid-template-columns: minmax(0, 1fr)`，否则邮件标题等长内容会撑宽整页（手机上曾被撑到 578px）。
 - 深度链接 `#sym=sh562500` 可以直接打开详情，邮件里的链接用的就是它。
 - 添加自选的搜索框是 ARIA combobox：输入停顿 200ms 后发起搜索，`sug.seq` 保证只渲染最后一次输入的结果；默认选中第一条，回车添加；已在自选中的选项标注出来，选中后只打开详情。列表项用 `mousedown` 选中，因为 click 触发前输入框已经失焦、列表会先被关掉；失焦后 150ms 关闭，重新聚焦且内容没变时恢复列表。
-- 截图使用 html-to-image：给 body 加 `shooting` 类，隐藏按钮和 `.no-shot` 元素，并把顶栏改为静态；“只截数据”模式再加 `shooting-data` 类，隐藏 `#alerts` 和 `#glossary`。图片像素控制在约 1600 万以内（Safari 画布上限），超出时自动降低分辨率。**等待布局刷新用 `setTimeout`，不用 `requestAnimationFrame`**，因为页面不在前台时它不会触发。
+- 截图使用 html-to-image：给 body 加 `shooting` 类，隐藏按钮和 `.no-shot` 元素，并把顶栏改为静态；“只截数据”模式再加 `shooting-data` 类，隐藏 `#alerts` 和 `#glossary`。图片像素控制在约 1600 万以内（Safari 画布上限），超出时自动降低分辨率。**等待布局刷新用 `setTimeout`，不用 `requestAnimationFrame`**，因为页面不在前台时它不会触发。截图前会临时展开所有 `details.fold` 并展开全部评分，`finally` 里还原（用 try 包住，出错也会还原）。**截图里不要用 CSS `columns` 分栏**：html-to-image 会把计算后的 `height` 固定下来，多列容器在截图里会重新分栏，整页 PNG 曾因此丢掉“美国财政”一组说明，页面上却看不出来。指标说明因此用两个固定的 `.g-col`（grid 两列），不用 `columns`。
 - 验证时的坑：浏览器面板隐藏时视口宽度可能是 0，截图会全黑，ECharts 动画也不会播放，导致折线缺失。这时改用 `resize_window` 模拟视口，加 `javascript_tool` 读取 DOM 来验证；需要看截图效果时，先关掉图表动画。
 
 ## 8. 部署（deploy/deploy.sh）

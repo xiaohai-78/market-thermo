@@ -176,6 +176,17 @@ h2 { margin: 0; font-size: 15px; font-weight: 600; }
 .parts .p b { text-align: right; color: var(--text); font-weight: 500; }
 @media (max-width: 760px) { .global { grid-template-columns: 1fr; } }
 
+/* 美国财政 */
+.fiscal { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.fiscal > div { min-width: 0; }
+.fiscal .hint { margin-top: 3px; }
+.parts.wide { margin: 10px 0 6px; }
+.parts.wide .p { grid-template-columns: 46px 1fr 72px; }
+.plain { margin: 14px 0 0; padding: 10px 12px; border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0;
+  background: var(--card-2); font-size: 14px; line-height: 1.7; }
+.plain b { margin-right: 8px; color: var(--accent); font-weight: 600; }
+@media (max-width: 760px) { .fiscal { grid-template-columns: 1fr; } }
+
 /* 指数卡片 */
 .idx .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
 .idx .name { font-weight: 600; }
@@ -266,7 +277,8 @@ table.wl { width: 100%; border-collapse: collapse; white-space: nowrap; }
 .w-grid { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 8px; font-size: 13px; color: var(--muted); }
 .w-grid label { display: inline-flex; align-items: center; gap: 6px; }
 .w-grid input { width: 58px; padding: 3px 6px; border-radius: 7px; border: 1px solid var(--border); background: var(--card-2); }
-.opp { display: grid; gap: 2px; }
+.opp { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; }
+.opp-more { justify-self: center; margin-top: 6px; }
 .opp-row {
   display: grid; grid-template-columns: 28px minmax(130px, 1.1fr) minmax(120px, 2fr) 104px; grid-template-rows: auto auto;
   column-gap: 12px; row-gap: 3px; align-items: center; padding: 10px 8px; border-radius: 10px; cursor: pointer; transition: background .12s;
@@ -307,7 +319,7 @@ table.wl { width: 100%; border-collapse: collapse; white-space: nowrap; }
 .al-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px 24px; }
 @media (max-width: 860px) { .al-grid { grid-template-columns: 1fr; } }
 .al-sub { font-size: 12px; color: var(--muted); font-weight: 600; margin: 4px 0 6px; }
-.al-events { display: grid; gap: 4px; }
+.al-events { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
 .al-ev { display: flex; gap: 8px; align-items: flex-start; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--card-2); cursor: pointer; }
 .al-ev input { margin-top: 3px; }
 .al-ev b { display: block; font-size: 13px; font-weight: 600; }
@@ -320,7 +332,7 @@ table.wl { width: 100%; border-collapse: collapse; white-space: nowrap; }
 .al-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .al-preview { margin: 10px 0 0; padding: 10px 12px; max-height: 360px; overflow: auto; white-space: pre-wrap; word-break: break-all;
   font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--card-2); border: 1px solid var(--border); border-radius: 10px; color: var(--text); }
-.al-history { display: grid; gap: 2px; }
+.al-history { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; }
 .al-h summary { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 8px; cursor: pointer; list-style: none; font-size: 13px; }
 .al-h summary::-webkit-details-marker { display: none; }
 .al-h summary:hover { background: var(--card-2); }
@@ -330,8 +342,20 @@ table.wl { width: 100%; border-collapse: collapse; white-space: nowrap; }
 .al-detail { padding: 4px 10px 10px 18px; font-size: 12.5px; color: var(--muted); line-height: 1.7; }
 
 /* 指标说明 */
-.glossary { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 28px; }
-@media (max-width: 860px) { .glossary { grid-template-columns: 1fr; } }
+/* 两个固定的列容器各自堆叠，不用 CSS columns：html-to-image 会把计算后的 height 写死，多列容器在截图里会重新分栏并丢组 */
+.glossary { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 28px; align-items: start; }
+.g-group { margin-bottom: 14px; }
+@media (max-width: 860px) { .glossary { grid-template-columns: minmax(0, 1fr); } }
+
+/* 折叠区：低频内容默认收起，展开状态记在浏览器里 */
+.fold > summary { display: flex; align-items: baseline; gap: 12px; cursor: pointer; list-style: none; padding: 2px 0; }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::after { content: "展开 ▾"; margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.fold > summary:hover::after { color: var(--text); }
+.fold[open] > summary { margin-bottom: 12px; }
+.fold[open] > summary::after { content: "收起 ▴"; }
+.fold > summary .hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#alerts .fold > summary { border-top: 1px solid var(--border); padding-top: 12px; }
 .g-group h3 { margin: 4px 0 6px; font-size: 13px; font-weight: 600; color: var(--accent); }
 .g-group dl { margin: 0; }
 .g-group dt { font-weight: 600; font-size: 13px; margin-top: 10px; }

@@ -58,20 +58,6 @@
 
   <section class="grid indices" id="indices"></section>
 
-  <section class="card">
-    <div class="card-head">
-      <h2>走势</h2>
-      <div class="tabs" id="trend-tabs">
-        <button data-tab="temp" class="on">大盘温度</button>
-        <button data-tab="breadth">宽度历史</button>
-        <button data-tab="cnn">CNN 恐惧贪婪</button>
-        <button data-tab="vix">VIX</button>
-      </div>
-    </div>
-    <div class="chart" id="trend-chart"></div>
-    <div class="note" id="trend-note"></div>
-  </section>
-
   <section class="card" id="opp">
     <div class="card-head">
       <div>
@@ -149,6 +135,25 @@
     <div class="note">虚线为按“近一年最高收盘价 × (1 − 档位)”计算的档位线，仅作对照，不构成买卖建议。</div>
   </section>
 
+  <section class="card">
+    <div class="card-head">
+      <h2>走势</h2>
+      <div class="tabs" id="trend-tabs">
+        <button data-tab="temp" class="on">大盘温度</button>
+        <button data-tab="breadth">宽度历史</button>
+        <button data-tab="cnn">CNN 恐惧贪婪</button>
+        <button data-tab="vix">VIX</button>
+      </div>
+    </div>
+    <div class="chart" id="trend-chart"></div>
+    <div class="note" id="trend-note"></div>
+  </section>
+
+  <section class="card" id="card-fiscal">
+    <div class="card-head"><h2>美国财政</h2><span class="hint">国债 · 利息负担 · 十年期收益率，不计入 A 股温度</span></div>
+    <div id="fiscal-body" class="skeleton"></div>
+  </section>
+
   <section class="card" id="alerts">
     <div class="card-head">
       <div>
@@ -160,6 +165,8 @@
         <label class="switch" title="提醒总开关"><input type="checkbox" id="al-enabled"><i></i></label>
       </div>
     </div>
+    <details class="fold" id="fold-alerts">
+    <summary><b>设置与提醒记录</b><span class="hint" id="al-sum"></span></summary>
     <div class="al-grid">
       <div>
         <div class="al-sub">提醒事件</div>
@@ -181,11 +188,14 @@
     <div class="note" id="al-next"></div>
     <div class="al-sub" style="margin-top:12px">提醒记录</div>
     <div id="al-history" class="al-history"><div class="empty">加载中…</div></div>
+    </details>
   </section>
 
   <section class="card" id="glossary">
-    <div class="card-head"><h2>指标说明</h2></div>
+    <details class="fold" id="fold-gloss">
+    <summary><h2>指标说明</h2><span class="hint">各分数怎么算、阈值是多少</span></summary>
     <div class="glossary">
+      <div class="g-col">
       <div class="g-group">
         <h3>温度</h3>
         <dl>
@@ -253,6 +263,8 @@
           <dd><b>个股</b>：价格信号看不出公司基本面恶化，需人工核对；<b>历史不足 3 年</b>：分位参考性下降；<b>仍在连跌</b>：连跌 3 天及以上；<b>跌穿最深档</b>：回撤超过最深档位，需按策略重新评估；证伪条件需要人工核对，评分无法判断。</dd>
         </dl>
       </div>
+      </div>
+      <div class="g-col">
       <div class="g-group">
         <h3>信号评分 · 过热卖出</h3>
         <dl>
@@ -294,11 +306,26 @@
           <dd>A 股和海外同时恐慌，多为全球性风险；只有 A 股恐慌，多为本土因素。</dd>
         </dl>
       </div>
+      <div class="g-group">
+        <h3>美国财政（不计入 A 股温度）</h3>
+        <dl>
+          <dt>国债总额</dt>
+          <dd>美国联邦政府的全部未偿债务，含欠公众的和欠政府自己各类基金（如社保信托基金）的两部分。财政部每个工作日公布，约滞后 1 个工作日；对比的是一年前同日的数字。</dd>
+          <dt>净利息占财政收入</dt>
+          <dd>财年累计的“净利息支出 ÷ 财政收入合计”，即每收进 100 美元要先拿多少去还利息。来自财政部月度财政报告（MTS），次月第 8 个工作日左右发布；美国财年从 10 月 1 日起，9 月底的数字就是全年。同时对比国防支出，利息超过国防是 2024 财年起的新情况。</dd>
+          <dt>10 年期美债收益率</dt>
+          <dd>市场借钱给美国政府十年需要的年利率，是全球资产定价的基准。<b>收益率越高，债券价格越低</b>，成长股和长久期资产的估值压力也越大。数据来自 FRED，约滞后 1 个交易日；分位指它在近 3 年里排在什么位置。</dd>
+          <dt>大白话</dt>
+          <dd>卡片最下面那句话由当前数字自动拼出，只是把上面几项翻译成日常说法，不是投资建议。</dd>
+        </dl>
+      </div>
+      </div>
     </div>
+    </details>
   </section>
 
   <footer class="foot">
-    <p>数据：腾讯 / 东方财富 / 新浪 / CBOE / CNN。仅供参考，不构成投资建议。</p>
+    <p>数据：腾讯 / 东方财富 / 新浪 / CBOE / CNN / 美国财政部 / FRED。仅供参考，不构成投资建议。</p>
   </footer>
 </main>
 

@@ -43,8 +43,11 @@ def is_trading_time(t=None):
     return 915 <= hm <= 1505
 
 
-def get(url, timeout=10, referer="https://quote.eastmoney.com/", retries=2):
-    req = urllib.request.Request(url, headers={"User-Agent": UA, "Referer": referer, "Accept": "*/*"})
+def get(url, timeout=10, referer="https://quote.eastmoney.com/", retries=2, ua=UA):
+    headers = {"Referer": referer, "Accept": "*/*"}
+    if ua:  # ua=None 时不设置，用 urllib 默认 UA
+        headers["User-Agent"] = ua
+    req = urllib.request.Request(url, headers=headers)
     for attempt in range(retries + 1):
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -460,3 +463,102 @@ def cnn():
             "score": [p["y"] for p in hist],
         },
     }
+
+
+# ---------- 美国财政（财政部 FiscalData + FRED，均为官方数据，免密钥） ----------
+
+FISCAL_API = "https://api.fiscaldata.treasury.gov/services/api/fiscal_service"
+FISCAL_REFERER = "https://fiscaldata.treasury.gov/"
+
+
+def _fiscal_get(path, params):
+    return json.loads(get("%s/%s?%s" % (FISCAL_API, path, urllib.parse.urlencode(params)),
+                          timeout=15, referer=FISCAL_REFERER, retries=1))["data"]
+
+
+def fiscal_debt(series_days=250):
+    """国债总额（Debt to the Penny，工作日更新），单位万亿美元；对比一年前。"""
+    rows = _fiscal_get("v2/accounting/od/debt_to_penny", {
+        "sort": "-record_date", "page[size]": 400, "fields": "record_date,tot_pub_debt_out_amt"})[::-1]
+    dates = [r["record_date"] for r in rows]
+    vals = [float(r["tot_pub_debt_out_amt"]) / 1e12 for r in rows]
+    target = (datetime.strptime(dates[-1], "%Y-%m-%d") - timedelta(days=365)).strftime("%Y-%m-%d")
+    i = bisect.bisect_right(dates, target) - 1
+    ago = vals[i] if i >= 0 else None
+    return {"value": vals[-1], "date": dates[-1], "year_ago": ago,
+            "change": vals[-1] - ago if ago else None,
+            "change_pct": (vals[-1] / ago - 1) * 100 if ago else None,
+            "series": {"dates": dates[-series_days:], "close": vals[-series_days:]}}
+
+
+def fiscal_budget():
+    """月度财政报告（MTS Table 9）：财年累计的收入、净利息、国防，单位万亿美元。"""
+    rows = _fiscal_get("v1/accounting/mts/mts_table_9", {"sort": "-record_date", "page[size]": 40})
+    last = max(r["record_date"] for r in rows)
+    rows = [r for r in rows if r["record_date"] == last]
+    desc = {r["classification_id"]: r["classification_desc"] for r in rows}
+    pick = {}
+    for r in rows:
+        name = r["classification_desc"]
+        if name == "Total":  # 收入合计和支出合计同名，按所属分组区分
+            name = "Total receipts" if desc.get(r["parent_id"]) == "Receipts" else "Total outlays"
+        pick[name] = r
+
+    def amt(name, field):
+        v = pick[name]["%s_fytd_rcpt_outly_amt" % field]
+        return float(v) / 1e12 if v not in (None, "null") else None
+    try:
+        rcpt, outl = amt("Total receipts", "current"), amt("Total outlays", "current")
+        intr, intr0 = amt("Net Interest", "current"), amt("Net Interest", "prior")
+        defn, defn0 = amt("National Defense", "current"), amt("National Defense", "prior")
+    except KeyError as e:
+        raise ValueError("MTS 表结构变化，缺少 %s" % e)
+    if not (rcpt and outl and intr and defn):
+        raise ValueError("MTS 数据不完整")
+    fy = int(pick["Net Interest"]["record_fiscal_year"])
+    full = last[5:7] == "09"  # 美国财年 10 月 1 日起，9 月底为全年
+    return {"date": last, "fy": fy, "period": "FY%d %s" % (fy, "全年" if full else "累计至 " + last[5:]), "full_year": full,
+            "receipts": rcpt, "outlays": outl, "deficit": outl - rcpt,
+            "interest": intr, "interest_yoy": (intr / intr0 - 1) * 100 if intr0 else None,
+            "defense": defn, "defense_yoy": (defn / defn0 - 1) * 100 if defn0 else None,
+            "interest_vs_receipts": intr / rcpt * 100, "interest_vs_outlays": intr / outl * 100,
+            "interest_vs_defense": (intr / defn - 1) * 100}
+
+
+def fiscal_yield(series_days=250):
+    """10 年期美债收益率（FRED DGS10，滞后约 1 个交易日）：当前值、日变动（bp）、近 3 年分位。"""
+    since = (datetime.now(timezone.utc) - timedelta(days=3 * 365)).strftime("%Y-%m-%d")
+    rows = [ln.split(",") for ln in get("https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS10&cosd=" + since,
+                                        timeout=15, referer="https://fred.stlouisfed.org/", retries=1,
+                                        ua=None).splitlines()[1:]]  # FRED 对浏览器 UA 和自定义 UA 会挂起不返回，只有 urllib 默认 UA 正常
+    rows = [(r[0], float(r[1])) for r in rows if len(r) == 2 and r[1] not in ("", ".")]  # 假日为空值
+    if len(rows) < 2:
+        raise ValueError("FRED 返回数据不足")
+    dates, vals = [r[0] for r in rows], [r[1] for r in rows]
+    return {"value": vals[-1], "date": dates[-1], "change_bp": (vals[-1] - vals[-2]) * 100,
+            "pctile": sum(v <= vals[-1] for v in vals) / len(vals) * 100,
+            "series": {"dates": dates[-series_days:], "close": vals[-series_days:]}}
+
+
+def fiscal_plain(debt=None, budget=None, yld=None):
+    """把已有的数据拼成一句大白话；哪项没取到就略过哪项。"""
+    out = []
+    if debt:
+        s = "美国一共欠了 %.1f 万亿美元" % debt["value"]
+        if debt["change"] is not None:
+            s += "，比一年前%s了 %.1f 万亿" % ("多" if debt["change"] >= 0 else "少", abs(debt["change"]))
+        out.append(s)
+    if budget:
+        s = ("一年光利息就要付 %.2f 万亿" if budget["full_year"] else "这个财年到现在光利息就付了 %.2f 万亿") % budget["interest"]
+        d = budget["interest_vs_defense"]
+        s += "，%s，等于每收进 100 美元就有 %.0f 美元先拿去还利息" % (
+            "比军费还多" if d > 0 else "相当于军费的 %.0f%%" % (100 + d), budget["interest_vs_receipts"])
+        out.append(s)
+    if yld:
+        s = "现在想借它十年的钱，市场要 %.1f%% 的年息" % yld["value"]
+        if yld["pctile"] >= 80:
+            s += "，是近 3 年的高位"
+        elif yld["pctile"] <= 20:
+            s += "，是近 3 年的低位"
+        out.append(s)
+    return "；".join(out) + "。" if out else None
