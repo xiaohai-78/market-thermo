@@ -274,6 +274,8 @@ def run_alerts(phase, dry=False, fresh=False):
     results = list(pool.map(lambda s: _safe(symbol, s, force), syms))
     s_, mkt = get_settings(), ov["market"]["temp"]
     items = [(r["data"], signals.score(r["data"], mkt, s_)) for r in results if r["ok"]]
+    if phase == "weekly":
+        return engine.snapshot(ov, items, s_, dry=dry, fresh=fresh)
     return engine.evaluate(phase, ov, items, s_, dry=dry, fresh=fresh)
 
 
@@ -292,6 +294,10 @@ def alert_loop():
                     r = run_alerts("close")
                     log.info("alerts close: %s", r.get("skipped") or "%d events" % len(r["events"]))
                     engine.mark_run("close", today)
+                elif now.weekday() == 4 and 1510 <= hm < 1600 and not engine.ran("weekly", today):
+                    r = run_alerts("weekly")  # 周五收盘邮件之后的下一轮（30 秒内）发状态快照
+                    log.info("alerts weekly: %s", r.get("skipped") or r.get("note") or r.get("title"))
+                    engine.mark_run("weekly", today)
                 elif 1445 <= hm < 1500 and not engine.ran("preview", today):
                     r = run_alerts("preview")
                     log.info("alerts preview: %s", r.get("skipped") or "%d events" % len(r["events"]))
@@ -376,8 +382,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json({"ok": True})
             if method == "POST" and u.path == "/api/alerts/preview":  # 预演：不发送、不改状态
                 phase = q.get("phase", "close")
-                if phase not in ("intraday", "preview", "close"):
-                    raise ValueError("phase 只能是 intraday / preview / close")
+                if phase not in ("intraday", "preview", "close", "weekly"):
+                    raise ValueError("phase 只能是 intraday / preview / close / weekly")
                 return self.send_json(run_alerts(phase, dry=True, fresh=q.get("fresh") == "1"))
             if method == "GET" and u.path == "/api/health":
                 hb = alert_heartbeat["time"]

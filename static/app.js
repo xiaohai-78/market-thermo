@@ -540,14 +540,15 @@ function renderOpportunity() {
 // ---------- 提醒 ----------
 const EVENTS = [
   ["B1", "档位触达", "回撤首次跌破某一档，每档每轮只报一次（盘中每 10 分钟检查）"],
-  ["B2", "买入信号", "买入评分升级为“有信号 / 信号强”：便宜且开始企稳（14:45 预警、15:10 复核）"],
+  ["B2", "买入信号", "买入评分升级为“有信号 / 信号强”且现价站上 MA5（14:45 预警、15:10 复核）"],
   ["B3", "进入冰点", "温度跌破 10（回到 25 以上后才会再次提醒）"],
   ["S1", "止盈信号", "过热评分升级为“止盈信号 / 止盈信号强”：过热且开始滞涨（14:45 预警、15:10 复核）"],
   ["S2", "进入过热", "温度升破 90（回到 75 以下后才会再次提醒，盘中检查）"],
   ["S3", "过热后回落", "进入过热后从高点回落 10%，每轮只报一次"],
   ["M", "市场层面", "大盘冰点 / 过热、宽度极度恐慌 / 狂热、CNN 极度恐惧 / 贪婪（15:10 检查）"],
+  ["W", "每周快照", "每周五收盘后一封：自选当前的档位、评分和提醒条件是否满足（不是新触发的提醒）"],
 ];
-const PHASE = { intraday: "盘中", preview: "14:45 预警", close: "15:10 收盘" };
+const PHASE = { intraday: "盘中", preview: "14:45 预警", close: "15:10 收盘", weekly: "周报快照" };
 
 async function loadAlerts() {
   state.alerts = await api("/api/alerts");
@@ -561,17 +562,18 @@ function renderAlerts() {
   $("#al-enabled").checked = cfg.enabled;
   $("#al-status").textContent = !a.notify ? "未配置 notify 服务，只记录不发送" : cfg.enabled ? "已开启 · 经 notify-service 发邮件" : "已暂停（只记录）";
   $("#al-status").classList.toggle("live", a.notify && cfg.enabled);
-  $("#al-events").innerHTML = EVENTS.map(([k, name, desc]) => `<label class="al-ev ${k[0] === "S" ? "sell" : k === "M" ? "mkt" : "buy"}">
+  $("#al-events").innerHTML = EVENTS.map(([k, name, desc]) => `<label class="al-ev ${k[0] === "S" ? "sell" : k === "M" || k === "W" ? "mkt" : "buy"}">
       <input type="checkbox" data-ev="${k}" ${cfg.events[k] ? "checked" : ""}><span><b>${k} ${name}</b><em>${desc}</em></span></label>`).join("");
   $("#al-cooldown").value = cfg.cooldown_days;
   const syms = state.wl.filter((r) => r.ok && !r.data.error);
   $("#al-syms").innerHTML = syms.map((r) => `<label class="al-sym"><input type="checkbox" data-sym="${r.sym}" ${cfg.muted.includes(r.sym) ? "" : "checked"}>${esc(r.data.name)}</label>`).join("") || `<span class="hint">自选为空</span>`;
   $("#al-next").textContent = "检查时间：盘中每 10 分钟（9:40–11:30、13:00–14:55，仅价格类事件）· " + a.next_runs.join(" · ");
-  $("#al-sum").textContent = a.history.length ? `最近一封 ${a.history[0].time.slice(5, 16)} · ${a.history[0].title || ""}` : "还没有发出过提醒";
+  const lastSent = a.history.find((h) => h.delivered);
+  $("#al-sum").textContent = lastSent ? `最近一封 ${lastSent.time.slice(5, 16)} · ${lastSent.title || ""}` : "还没有发出过提醒";
   $("#al-history").innerHTML = a.history.length ? a.history.map((h, i) => `<details class="al-h">
       <summary><span class="t">${h.time.slice(5, 16)}</span><span class="tag soft">${PHASE[h.phase] || h.phase}</span>
-        <span class="ti">${esc(h.title || "")}</span>${h.delivered ? `<span class="ok">已发送</span>` : `<span class="bad" title="${esc(h.error || "")}">未发送</span>`}</summary>
-      <div class="al-detail">${h.events.map((e) => `<div>· [${e.type}] ${esc(e.lines[0])}</div>`).join("")}${(h.review || []).map((r) => `<div>· [复核] ${esc(r)}</div>`).join("")}${h.error ? `<div class="bad">${esc(h.error)}</div>` : ""}</div>
+        <span class="ti">${esc(h.title || "")}</span>${h.delivered ? `<span class="ok">已发送</span>` : h.silent ? `<span class="tag soft">仅记录</span>` : `<span class="bad" title="${esc(h.error || "")}">未发送</span>`}</summary>
+      <div class="al-detail">${h.events.map((e) => `<div>· [${e.type}] ${esc(e.lines[0])}</div>`).join("")}${(h.review || []).map((r) => `<div>· [复核] ${esc(r)}</div>`).join("")}${h.note ? `<div>· ${esc(h.note)}</div>` : ""}${h.error ? `<div class="bad">${esc(h.error)}</div>` : ""}</div>
     </details>`).join("") : `<div class="empty">还没有发出过提醒。上线后第一次检查只记录各标的的当前状态作为基线，之后发生变化才会提醒。</div>`;
 }
 
@@ -585,7 +587,7 @@ async function previewAlerts() {
   box.textContent = "预演中…（按收盘阶段、从零评估当前数据，不发送、不改变提醒状态）";
   try {
     const r = await api("/api/alerts/preview?phase=close&fresh=1", { method: "POST" });
-    box.textContent = r.message ? `${r.message.title}\n${r.message.summary}\n\n${r.message.detail}` : (r.skipped || "当前没有满足条件的事件。");
+    box.textContent = r.message ? `${r.message.title}\n${r.message.summary}\n\n${r.message.detail}` : (r.skipped || r.note || "当前没有满足条件的事件。");
   } catch (e) { box.textContent = "预演失败：" + e.message; }
 }
 

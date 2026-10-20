@@ -17,8 +17,8 @@ DEFAULT_SETTINGS = {
     "rise_ref": 80,
     "alerts": {
         "enabled": True,
-        # B1 档位触达 B2 买入信号 B3 进入冰点；S1 止盈信号 S2 进入过热 S3 过热后回落；M 市场层面
-        "events": {"B1": True, "B2": True, "B3": False, "S1": True, "S2": True, "S3": False, "M": True},
+        # B1 档位触达 B2 买入信号 B3 进入冰点；S1 止盈信号 S2 进入过热 S3 过热后回落；M 市场层面；W 每周五的状态快照
+        "events": {"B1": True, "B2": True, "B3": False, "S1": True, "S2": True, "S3": False, "M": True, "W": True},
         "cooldown_days": 7,
         "muted": [],
     },

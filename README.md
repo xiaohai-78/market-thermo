@@ -104,7 +104,7 @@ THERMO_DATA=/var/lib/market-thermo THERMO_PORT=8600 python3 server.py
 
 ## 邮件提醒（可选）
 
-提醒引擎（`thermo/alerts.py`）在工作日的盘中每 10 分钟、14:45 和 15:10 检查自选，只在状态变化时提醒，规则见 [docs/DESIGN.md](docs/DESIGN.md) 第 6 节。发信不在本项目里实现，而是调用一个兼容的通知服务：
+提醒引擎（`thermo/alerts.py`）在工作日的盘中每 10 分钟、14:45 和 15:10 检查自选，只在状态变化时提醒；每周五收盘后另发一封自选状态快照。规则见 [docs/DESIGN.md](docs/DESIGN.md) 第 6 节。发信不在本项目里实现，而是调用一个兼容的通知服务：
 
 ```
 POST {THERMO_NOTIFY_URL}/v1/notify
