@@ -119,8 +119,9 @@ body.shooting-data #alerts, body.shooting-data #glossary { display: none !import
 main { max-width: 1320px; margin: 0 auto; padding: 16px; display: grid; gap: 16px; }
 .grid { display: grid; gap: 16px; }
 .hero { grid-template-columns: 1fr 1.15fr 1.15fr; }
-.indices { grid-template-columns: repeat(3, 1fr); }
+.indices { grid-template-columns: repeat(4, 1fr); }
 @media (max-width: 1080px) { .hero { grid-template-columns: 1fr 1fr; } #card-global { grid-column: 1 / -1; } }
+@media (max-width: 1080px) { .indices { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 760px) { .hero, .indices { grid-template-columns: 1fr; } #card-global { grid-column: auto; } }
 
 .card {
@@ -373,3 +374,15 @@ table.wl { width: 100%; border-collapse: collapse; white-space: nowrap; }
 .z::before { content: ""; position: absolute; left: 0; top: 50%; width: 8px; height: 8px; border-radius: 2px; transform: translateY(-50%); }
 .z0::before { background: var(--t0); } .z1::before { background: var(--t1); } .z2::before { background: var(--t2); }
 .z3::before { background: var(--t3); } .z4::before { background: var(--t4); }
+
+/* 数据源降级提示：腾讯 K 线被拦截时个股/基金退到不复权的备用源，回撤和温度会偏 */
+.degrade {
+  width: calc(100% - 32px); max-width: 1288px; margin: 12px auto 0; padding: 9px 14px; border-radius: 10px;
+  font-size: 13px; line-height: 1.6; color: var(--text);
+  background: color-mix(in srgb, var(--t3) 14%, var(--card)); border: 1px solid color-mix(in srgb, var(--t3) 45%, transparent);
+}
+.degrade b { font-weight: 600; }
+.degrade span { color: var(--muted); }
+body.shooting .degrade { margin-top: 0; }
+.opp-name span.flag, .wl .nm span.flag { display: inline-block; margin-left: 6px; padding: 0 6px; font-size: 11px; vertical-align: 1px; }
+.opp-name span.flag.warn, .wl .nm span.flag.warn { color: var(--t3); }

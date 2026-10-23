@@ -208,16 +208,36 @@ function renderFiscal() {
   if (y) spark("fis-yield", $("#fis-yield"), y.series.close, css("--t3"));
 }
 
+// 数据源降级提示。腾讯 K 线正常时个股/基金都走腾讯（前复权）；退到东方财富/新浪（不复权）后，
+// 分红、拆分过的标的“距一年高点”和温度会偏差很大。指数不涉及复权，不算。
+const isBackup = (d) => d && !d.error && d.kind !== "指数" && d.source && d.source !== "腾讯";
+const BACKUP_TIP = "腾讯行情暂不可用，这个标的用的是备用源（K 线不复权），距一年高点和温度可能偏差，邮件提醒已跳过";
+const backupFlag = (d) => (isBackup(d) ? ` <span class="flag warn" title="${BACKUP_TIP}">备用源</span>` : "");
+
+function renderDegrade() {
+  const box = $("#degrade");
+  if (!box) return;
+  const bad = state.wl.filter((r) => r.ok && isBackup(r.data));
+  if (!bad.length) { box.hidden = true; return; }
+  const names = bad.slice(0, 3).map((r) => esc(r.data.name)).join("、") + (bad.length > 3 ? ` 等 ${bad.length} 只` : "");
+  box.innerHTML = `<b>⚠ 腾讯行情暂时不可用</b>，${names}改用备用源（新浪等，K 线不复权）：` +
+    `“距一年高点”和温度可能与实际偏差，分红、拆分过的标的偏差更大。<span>邮件提醒已自动跳过这些标的；腾讯恢复后会自动更正，无需操作。</span>`;
+  box.hidden = false;
+}
+
+const IDX_NAMES = ["沪深300", "中证1000", "中证全指", "上证指数"];  // 前三个与后端 core.MARKET_INDICES 顺序一致，最后是 EXTRA_INDICES
 function renderIndices() {
   const box = $("#indices");
   disposeWhere((k) => k.startsWith("idx-"));
-  box.innerHTML = state.ov.indices.map((r, i) => {
-    if (!r.ok) return `<article class="card idx"><div class="err">获取失败：${esc(r.error)}</div></article>`;
+  // 前三个计入大盘温度；EXTRA_INDICES（上证指数）只展示
+  const items = state.ov.indices.map((r) => ({ r, extra: false })).concat((state.ov.extra_indices || []).map((r) => ({ r, extra: true })));
+  box.innerHTML = items.map(({ r, extra }, i) => {
+    if (!r.ok) return `<article class="card idx"><div class="name">${IDX_NAMES[i] || "指数"}</div><div class="err">暂时取不到行情（所有数据源都不可用）${extra ? "" : "，大盘温度按其余指数计算"}。</div></article>`;
     const d = r.data;
     if (d.error) return `<article class="card idx"><div class="name">${esc(d.name)}</div><div class="err">${esc(d.error)}</div></article>`;
     return `<article class="card idx" data-sym="${d.sym}" style="cursor:pointer" title="查看详情">
       <div class="top">
-        <div><span class="name">${esc(d.name)}</span><span class="code">${d.sym}</span>
+        <div><span class="name">${esc(d.name)}</span><span class="code">${d.sym}</span>${extra ? ` <span class="flag" title="只展示，不参与大盘温度的平均，也不参与邮件提醒">不计入大盘温度</span>` : ""}
           <div class="row"><b class="num">${price(d.price)}</b><span class="num ${ud(d.pct)}">${sgn(d.pct)}</span></div></div>
         <div class="temp"><b style="color:${tcolor(d.temp)}">${n0(d.temp)}</b>${tag(d.label, zoneIdx(d.temp))}</div>
       </div>
@@ -230,7 +250,7 @@ function renderIndices() {
       <div class="spark" id="idx-${i}"></div>
     </article>`;
   }).join("");
-  state.ov.indices.forEach((r, i) => {
+  items.forEach(({ r }, i) => {
     if (r.ok && !r.data.error) spark("idx-" + i, $("#idx-" + i), r.data.series.temp, tcolor(r.data.temp), { min: 0, max: 100 });
   });
   box.querySelectorAll("[data-sym]").forEach((el) => el.addEventListener("click", () => openDetail(el.dataset.sym)));
@@ -334,7 +354,7 @@ function renderWatchlist() {
     if (!r.ok || r.data.error) return `<tr data-sym="${r.sym}"><td class="nm"><b>${esc(r.data ? r.data.name : r.sym)}</b><span>${r.sym}</span></td><td colspan="8" class="err">${esc(r.error || r.data.error)}</td>${rm}</tr>`;
     const d = r.data;
     return `<tr data-sym="${d.sym}" class="${state.sel === d.sym ? "sel" : ""}">
-      <td class="nm"><b>${esc(d.name)}</b><span>${d.sym}</span></td>
+      <td class="nm"><b>${esc(d.name)}</b><span>${d.sym}</span>${backupFlag(d)}</td>
       <td class="num">${price(d.price)}</td>
       <td class="num ${ud(d.pct)}">${sgn(d.pct)}</td>
       <td class="num"><span class="tbar"><em><i style="width:${d.temp || 0}%;background:${tcolor(d.temp)}"></i></em><b>${n0(d.temp)}</b>${tag(d.label, zoneIdx(d.temp))}</span></td>
@@ -524,7 +544,7 @@ function renderOpportunity() {
     const segs = m.keys.map((k) => `<i style="width:${sg.parts[k] * w[k]}%;background:${css(m.colors[k])}" title="${m.full[k]} ${Math.round(sg.parts[k])} × ${Math.round(w[k] * 100)}%"></i>`).join("");
     return `<div class="opp-row" data-sym="${d.sym}" title="查看详情">
       <div class="rank">${i + 1}</div>
-      <div class="opp-name"><b>${esc(d.name)}</b><span>${d.sym} · ${d.kind}</span></div>
+      <div class="opp-name"><b>${esc(d.name)}</b><span>${d.sym} · ${d.kind}${backupFlag(d)}</span></div>
       <div class="opp-bar">${segs}</div>
       <div class="opp-score"><b>${Math.round(sg.score)}</b><span class="tag ${m.tagPrefix}${sg.level}">${sg.label}</span></div>
       <div class="opp-parts">${m.keys.map((k) => `<span><i class="sw" style="background:${css(m.colors[k])}"></i>${m.names[k]} ${Math.round(sg.parts[k])}</span>`).join("")}` +
@@ -741,6 +761,7 @@ async function loadOverview(force) {
 }
 async function loadWatchlist(force) {
   state.wl = await api("/api/watchlist" + (force ? "?refresh=1" : ""));
+  renderDegrade();
   renderWatchlist();
   renderOpportunity();
   renderAlerts();

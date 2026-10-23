@@ -22,6 +22,8 @@ HIST_WINDOW = 750   # 分位数回看约 3 年
 YEAR = 250
 
 MARKET_INDICES = [("sh000300", "沪深300"), ("sh000852", "中证1000"), ("sh000985", "中证全指")]
+# 只展示、不计入大盘温度、不参与提醒的指数。改 MARKET_INDICES 会改变大盘温度的定义，也会牵动提醒里对数据源的判断
+EXTRA_INDICES = [("sh000001", "上证指数")]
 ALIASES = {
     "上证": "sh000001", "上证指数": "sh000001", "深证成指": "sz399001",
     "沪深300": "sh000300", "中证500": "sh000905", "中证1000": "sh000852",
@@ -127,23 +129,66 @@ def resolve(code):
 # ---------- K 线 ----------
 # bar = (date, open, close, high, low, volume)
 
+def _parse_qt(qt):
+    """腾讯行情数组 → quote。K 线接口内嵌的 qt 与 qt.gtimg.cn 的布局相同：
+    [1]名称 [3]现价 [4]昨收 [5]开 [6]量 [30]时间 [32]涨跌% [33]高 [34]低。"""
+    if len(qt) <= 34 or not qt[3]:
+        return None
+    ts = "".join(ch for ch in qt[30] if ch.isdigit())
+    return {
+        "name": qt[1], "price": float(qt[3]), "pct": float(qt[32] or 0),
+        "date": "%s-%s-%s" % (ts[:4], ts[4:6], ts[6:8]) if len(ts) >= 8 else None,
+        "time": ts[8:12] if len(ts) >= 12 else "",
+        "bar": (float(qt[5] or qt[3]), float(qt[3]), float(qt[33] or qt[3]),
+                float(qt[34] or qt[3]), float(qt[6] or 0)),
+    }
+
+
+# web.ifzq.gtimg.cn 的 fqkline 在 2026-10-21、10-22 两次被 WAF 按出口 IP 拦截（HTTP 501，qt.gtimg.cn 不受影响）。
+# 同一路径换 ifzq.gtimg.cn 主机仍可用，数据与原主机一致（核对过提醒状态里记录的 250 日高点）；
+# newfqkline/get 的前复权口径不同（茅台 801 根里 721 根收盘价对不上），不能混用，否则提醒会判成数据源不一致
+TENCENT_KLINE_HOSTS = ("https://ifzq.gtimg.cn", "https://web.ifzq.gtimg.cn")
+# 历史一天只变一次：缓存不含当天的部分，缓存期内当天这根用 qt.gtimg.cn 补。
+# 原来每个标的每分钟拉一次 800 根（盘中 17 个标的约每小时 1000 次），怀疑就是被拦截的原因
+KLINE_TTL = 4 * 3600
+_KLINE_CACHE = {}   # sym -> (取数时刻, 日期, 不含当天的 bars)
+
+
 def _from_tencent(sym):
-    raw = json.loads(get("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=%s,day,,,800,qfq" % sym))
+    today = now_cn().strftime("%Y-%m-%d")
+    hit = _KLINE_CACHE.get(sym)
+    if hit and hit[1] == today and time.time() - hit[0] < KLINE_TTL:
+        try:
+            quote = _quote_qt(sym)
+        except Exception:
+            quote = None
+        if quote:  # 行情接口也失败时退回下面重新拉 K 线，不拿缓存凑一份没有当天数据的结果
+            return list(hit[2]), quote
+    last = None
+    for host in TENCENT_KLINE_HOSTS:
+        try:
+            raw = json.loads(get(host + "/appstock/app/fqkline/get?param=%s,day,,,800,qfq" % sym))
+            break
+        except Exception as e:  # get() 遇 HTTP 错误（被拦截时是 501）不重试，直接换下一个主机
+            last = e
+    else:
+        raise last
     d = raw["data"][sym]
     rows = d.get("qfqday") or d.get("day") or []
     bars = [(r[0],) + tuple(float(x) for x in r[1:6]) for r in rows]
-    qt = d.get("qt", {}).get(sym, [])
-    quote = None
-    if len(qt) > 34 and qt[3]:
-        ts = "".join(ch for ch in qt[30] if ch.isdigit())
-        quote = {
-            "name": qt[1], "price": float(qt[3]), "pct": float(qt[32] or 0),
-            "date": "%s-%s-%s" % (ts[:4], ts[4:6], ts[6:8]) if len(ts) >= 8 else None,
-            "time": ts[8:12] if len(ts) >= 12 else "",
-            "bar": (float(qt[5] or qt[3]), float(qt[3]), float(qt[33] or qt[3]),
-                    float(qt[34] or qt[3]), float(qt[6] or 0)),
-        }
-    return bars, quote
+    if bars:
+        _KLINE_CACHE[sym] = (time.time(), today, [b for b in bars if b[0] < today])
+    return bars, _parse_qt(d.get("qt", {}).get(sym, []))
+
+
+def _quote_qt(sym):
+    """腾讯实时行情 qt.gtimg.cn（GBK）。与 K 线接口分开限流：K 线被 WAF 拦截（HTTP 501）时它通常还能用，
+    所以备用源没有名称、没有当天盘中 K 线时拿它补。取不到返回 None。"""
+    req = urllib.request.Request("https://qt.gtimg.cn/q=" + sym,
+                                 headers={"Referer": "https://gu.qq.com/", "Accept": "*/*", "User-Agent": UA})
+    with urllib.request.urlopen(req, timeout=8) as r:
+        raw = r.read().decode("gbk", errors="replace")
+    return _parse_qt(raw.split('"')[1].split("~")) if raw.count('"') >= 2 else None
 
 
 def _from_eastmoney(sym):
@@ -167,6 +212,7 @@ def _from_sina(sym):
 
 
 STALE_DAYS = 20   # 最后一根 K 线早于此天数的数据源视为停更（如新浪的中证全指停在 2016 年）
+_NAMES = {}       # 代码 → 名称：任何一次拿到就记下。备用源（东方财富、新浪）没有名称，降级时用它，避免页面显示成代码
 
 
 def load_bars(sym):
@@ -182,7 +228,11 @@ def load_bars(sym):
         bars, quote = _from_tencent(sym)
         name, source = (quote or {}).get("name"), "腾讯"
     except Exception:
-        pass
+        try:  # K 线被拦截时行情接口通常还能用：补名称和当天这根 K 线
+            quote = _quote_qt(sym)
+            name = (quote or {}).get("name")
+        except Exception:
+            pass
     if not fresh(bars):
         bars = []
     if len(bars) < YEAR:
@@ -198,6 +248,10 @@ def load_bars(sym):
                 break
     if not bars:
         raise RuntimeError("所有数据源均不可用或已停更: " + sym)
+    if name and name != sym:
+        _NAMES[sym] = name
+    else:
+        name = _NAMES.get(sym)
     # 历史里缺当天时用实时行情补一根；非腾讯历史与腾讯行情的成交量单位不一致
     mixed = False
     if quote and quote["date"] and (not bars or quote["date"] > bars[-1][0]):

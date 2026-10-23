@@ -189,6 +189,7 @@ def get_fiscal(part):
 def overview(force=False):
     futs = {
         "indices": [pool.submit(_safe, symbol, s, force) for s, _ in core.MARKET_INDICES],
+        "extra": [pool.submit(_safe, symbol, s, force) for s, _ in core.EXTRA_INDICES],
         "breadth": pool.submit(_safe, get_breadth, force),
         "vix": pool.submit(_safe, get_vix, force),
         "cnn": pool.submit(_safe, lambda: cache.get("cnn", core.cnn, force)),
@@ -200,6 +201,7 @@ def overview(force=False):
         indices.append(dict(r, data=strip_series(r["data"], 250)) if r["ok"] else r)
     temps = [r["data"]["temp"] for r in indices if r["ok"] and r["data"].get("temp") is not None]
     avg = sum(temps) / len(temps) if temps else None
+    extra = [dict(r, data=strip_series(r["data"], 250)) if r["ok"] else r for r in (f.result() for f in futs["extra"])]
     fiscal = {k: f.result() for k, f in futs["fiscal"].items()}
     fiscal["plain"] = core.fiscal_plain(*[fiscal[k]["data"] if fiscal[k]["ok"] else None for k in ("debt", "budget", "yield")])
     return {
@@ -207,6 +209,7 @@ def overview(force=False):
         "trading": core.is_trading_time(),
         "market": {"temp": avg, "label": core.label(avg)},
         "indices": indices,
+        "extra_indices": extra,
         "breadth": futs["breadth"].result(),
         "breadth_history": core.read_breadth(BREADTH_CSV)[-120:],
         "vix": futs["vix"].result(),
